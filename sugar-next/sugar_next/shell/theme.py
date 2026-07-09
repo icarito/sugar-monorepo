@@ -144,7 +144,7 @@ class ThemeManager:
             self._tint_provider.load_from_string("")
         else:
             self._tint_provider.load_from_string(
-                f"window {{ --sn-accent: {hex_color}; }}"
+                f"* {{ --sn-accent: {hex_color}; }}"
             )
 
     def token(self, name):

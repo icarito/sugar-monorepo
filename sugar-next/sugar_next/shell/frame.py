@@ -126,6 +126,10 @@ class SugarFrame(Gtk.Revealer):
         self._running_ids = set()
         self._rebuild_favorites()
 
+    @property
+    def settings_button(self):
+        return self._settings_button
+
     def set_settings_panel(self, popover):
         self._settings_button.set_popover(popover)
 

@@ -4,11 +4,12 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, Gtk, Gio
+from gi.repository import Gdk, Gtk
 
 from sugar_next.api.hooks import registry as hook_registry
 from sugar_next.shell.app_grid import SugarAppGrid
 from sugar_next.shell.search_first import SugarSearchFirst
+from sugar_next.shell.desktop_grid import SugarDesktopGrid
 from sugar_next.shell.frame import SugarFrame
 from sugar_next.shell.home_view import HomeView
 from sugar_next.shell.theme import manager as theme_manager
@@ -52,12 +53,6 @@ class SugarShell(Gtk.Application):
 
         self.frame = SugarFrame()
 
-        # Real window tracking (only shows apps with an actual open
-        # window, like GNOME's taskbar) when the compositor offers
-        # zwlr_foreign_toplevel_manager_v1 — wlroots-based compositors
-        # only (Wayfire, Sway; not GNOME/Mutter). Falls back to the
-        # existing on_app_close-based "apps launched this session"
-        # tracking when the protocol is unavailable.
         self.toplevel_tracker = TopLevelTracker(
             on_open=self._on_toplevel_open,
             on_close=self._on_toplevel_close,
@@ -78,32 +73,60 @@ class SugarShell(Gtk.Application):
         )
         self.search_first.set_bundles(self.app_grid._load_bundles())
 
+        bundled = self.app_grid._load_bundles()
+        self.desktop_grid = SugarDesktopGrid(
+            background_path=self.settings_store.get("background_path")
+        )
+        self.desktop_grid.set_on_launch(self._on_app_launched)
+        self.desktop_grid.set_icon_size(icon_size)
+        self.desktop_grid.populate(bundled)
+
         self.home_view = HomeView()
         self.home_view.add_layout(self.app_grid, set_active=True)
         self.home_view.add_layout(self.search_first)
-        # Desktop grid layout exists (shell/desktop_grid.py) but is left
-        # out of the active Home View for now — parked, not deleted.
+        self.home_view.add_layout(self.desktop_grid)
 
         saved_layout = self.settings_store.get("home_view_layout")
         if saved_layout in self.home_view.layout_ids():
             self.home_view.set_active(saved_layout)
 
-        self.settings_panel = SettingsPanel(
-            home_view=self.home_view, store=self.settings_store
+        self._background_picture = Gtk.Picture()
+        self._background_picture.set_content_fit(Gtk.ContentFit.COVER)
+        self._background_picture.set_can_shrink(True)
+        bg_path = self.settings_store.get("background_path")
+        if bg_path:
+            self._background_picture.set_filename(bg_path)
+        self._background_picture.add_css_class("home-view-bg")
+
+        bg_css = Gtk.CssProvider()
+        bg_css.load_from_string(
+            """GtkPicture.home-view-bg { opacity: 0.4; }"""
         )
+        Gtk.StyleContext.add_provider_for_display(
+            self.window.get_display(),
+            bg_css,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
+
+        home_overlay = Gtk.Overlay()
+        home_overlay.set_child(self._background_picture)
+        home_overlay.add_overlay(self.home_view)
+
+        shell_overlay = Gtk.Overlay()
+        shell_overlay.set_child(home_overlay)
+        shell_overlay.add_overlay(self.frame)
+        self.window.set_child(shell_overlay)
+
+        self.settings_panel = SettingsPanel(
+            home_view=self.home_view, store=self.settings_store, shell=self
+        )
+        self.settings_panel.set_parent(self.frame.settings_button)
         self.frame.set_settings_panel(self.settings_panel)
 
-        overlay = Gtk.Overlay()
-        overlay.set_child(self.home_view)
-        overlay.add_overlay(self.frame)
-        self.window.set_child(overlay)
-
-        # F6 toggles the Frame (Sugar's classic frame key).
         key_controller = Gtk.EventControllerKey()
         key_controller.connect("key-pressed", self._on_key_pressed)
         self.window.add_controller(key_controller)
 
-        # Top-right hot corner reveals the Frame.
         motion = Gtk.EventControllerMotion()
         motion.connect("motion", self._on_motion)
         self.window.add_controller(motion)
@@ -113,6 +136,13 @@ class SugarShell(Gtk.Application):
     def _on_key_pressed(self, controller, keyval, keycode, state):
         if keyval == Gdk.KEY_F6:
             self.frame.toggle()
+            return True
+        if keyval in (Gdk.KEY_F1, Gdk.KEY_F10):
+            if self.settings_panel.is_visible():
+                self.settings_panel.popdown()
+            else:
+                self.frame.reveal()
+                self.settings_panel.popup()
             return True
         return False
 
@@ -126,28 +156,22 @@ class SugarShell(Gtk.Application):
     def _on_app_launched(self, bundle):
         self.frame.add_running(bundle)
         if self.settings_store.get("accent_color"):
-            # The learner picked an accent color explicitly in Settings —
-            # don't let active-app-palette tinting override that choice.
             return
         color = dominant_color_hex(bundle.icon)
         theme_manager.set_accent_tint(color)
 
+    def set_background(self, path):
+        if path:
+            self._background_picture.set_filename(path)
+        else:
+            self._background_picture.set_filename(None)
+
     def _on_toplevel_open(self, wayland_app_id, title):
-        # No-op: apps already appear in the Frame at launch time via
-        # add_running(). Real-window tracking here is only used to
-        # *remove* apps once their last window closes — see
-        # _on_toplevel_close. (Wiring toplevel-open to add_running too
-        # would need building a DesktopBundle from a bare Wayland app-id,
-        # which isn't always a 1:1 match with a .desktop id — future work
-        # if the Frame needs to show windows opened outside the shell.)
         pass
 
     def _on_toplevel_close(self, wayland_app_id, title):
         if self.toplevel_tracker.available is not True:
             return
-        # Only remove if no other open window still has this app_id —
-        # e.g. two Nautilus windows: closing one shouldn't drop it from
-        # the Frame while the other is still open.
         if not self._has_open_toplevel(wayland_app_id):
             self.frame.remove_running(wayland_app_id)
 
@@ -158,12 +182,6 @@ class SugarShell(Gtk.Application):
         )
 
     def _on_app_process_closed(self, app_id):
-        # Fallback path (see toplevel_tracker.py): only takes over when
-        # the compositor doesn't offer zwlr_foreign_toplevel_manager_v1
-        # (e.g. GNOME/Mutter). On a wlroots compositor, real window
-        # tracking (_on_toplevel_close) is authoritative and this would
-        # be redundant — but harmless, since remove_running() on an
-        # already-removed app_id is a no-op.
         if self.toplevel_tracker.available is True:
             return
         self.frame.remove_running(app_id)

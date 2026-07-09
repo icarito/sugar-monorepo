@@ -14,7 +14,7 @@ from gi.repository import Gdk, Gtk
 
 from sugar_next.api.hooks import list_extensions, registry, set_extension_enabled
 from sugar_next.shell.settings_store import SettingsStore, icon_size_px
-from sugar_next.shell.theme import manager as theme_manager
+from sugar_next.shell.theme import DEFAULT_ACCENT, manager as theme_manager
 
 _ACCENT_PRESETS = [
     "#3584e4",  # blue
@@ -23,21 +23,34 @@ _ACCENT_PRESETS = [
     "#ff7800",  # orange
     "#e01b24",  # red
     "#9141ac",  # purple
+    "#1a5fb4",  # dark blue
+    "#26a269",  # dark green
 ]
 
 _KEYBINDINGS = [
+    ("F1 / F10", "Open/close Settings"),
     ("F6", "Toggle the Frame"),
-    ("Search", "Type in any search-capable layout to filter apps"),
+    ("Search", "Type to filter apps (App Grid / Search First)"),
+    ("Esc", "Close popover, return to Home"),
 ]
 
 
 class SettingsPanel(Gtk.Popover):
     __gtype_name__ = "SugarNextSettingsPanel"
 
-    def __init__(self, home_view=None, store=None):
+    def __init__(self, home_view=None, store=None, shell=None):
         super().__init__()
+        self.set_autohide(True)
+        self.set_has_arrow(False)
         self._home_view = home_view
         self._store = store or SettingsStore()
+        self._shell = shell
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scrolled.set_max_content_height(520)
+        scrolled.set_propagate_natural_height(True)
+        self.set_child(scrolled)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         box.set_margin_start(16)
@@ -45,13 +58,9 @@ class SettingsPanel(Gtk.Popover):
         box.set_margin_top(16)
         box.set_margin_bottom(16)
         box.set_size_request(320, -1)
-        self.set_child(box)
+        scrolled.set_child(box)
 
-        # Background picker only applies to the desktop-grid layout, which
-        # is currently parked out of the active Home View (see main.py) —
-        # hidden here so it doesn't look like a dead control.
-        if self._home_view is not None and "desktop-grid" in self._home_view.layout_ids():
-            box.append(self._build_background_row())
+        box.append(self._build_background_row())
         box.append(self._build_accent_row())
         box.append(self._build_contrast_row())
         box.append(self._build_icon_size_row())
@@ -66,9 +75,18 @@ class SettingsPanel(Gtk.Popover):
     def _build_background_row(self):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         row.append(Gtk.Label(label="Background", xalign=0, hexpand=True))
-        button = Gtk.Button(label="Choose image…")
+        self._bg_label = Gtk.Label(
+            label="None", xalign=1, hexpand=False,
+            ellipsize=3, max_width_chars=20,
+        )
+        row.append(self._bg_label)
+        button = Gtk.Button(label="Choose image\u2026")
         button.connect("clicked", self._on_choose_background)
         row.append(button)
+        clear_btn = Gtk.Button(label="Clear")
+        clear_btn.add_css_class("flat")
+        clear_btn.connect("clicked", self._on_clear_background)
+        row.append(clear_btn)
         return row
 
     def _on_choose_background(self, _button):
@@ -81,7 +99,7 @@ class SettingsPanel(Gtk.Popover):
         )
         dialog.connect("response", self._on_background_chosen)
         dialog.show()
-        self._background_dialog = dialog  # keep alive until response
+        self._background_dialog = dialog
 
     def _on_background_chosen(self, dialog, response):
         if response == Gtk.ResponseType.ACCEPT:
@@ -89,6 +107,9 @@ class SettingsPanel(Gtk.Popover):
             if file is not None:
                 path = file.get_path()
                 self._store.set("background_path", path)
+                self._bg_label.set_label(file.get_basename() or "Image")
+                if self._shell is not None and hasattr(self._shell, "set_background"):
+                    self._shell.set_background(path)
                 if self._home_view is not None:
                     desktop_grid = self._home_view_layout("desktop-grid")
                     if desktop_grid is not None and hasattr(
@@ -97,24 +118,43 @@ class SettingsPanel(Gtk.Popover):
                         desktop_grid.set_background(path)
         dialog.destroy()
 
+    def _on_clear_background(self, _button):
+        self._store.set("background_path", "")
+        self._bg_label.set_label("None")
+        if self._shell is not None and hasattr(self._shell, "set_background"):
+            self._shell.set_background(None)
+        if self._home_view is not None:
+            desktop_grid = self._home_view_layout("desktop-grid")
+            if desktop_grid is not None and hasattr(desktop_grid, "set_background"):
+                desktop_grid.set_background(None)
+
     # -- accent ----------------------------------------------------------
 
     def _build_accent_row(self):
         column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         header.append(Gtk.Label(label="Accent color", xalign=0, hexpand=True))
+        current_color = self._store.get("accent_color")
+        self._accent_label = Gtk.Label(
+            label=current_color or DEFAULT_ACCENT,
+            xalign=1, hexpand=False,
+        )
+        header.append(self._accent_label)
         column.append(header)
 
-        presets_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        presets_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        presets_row.set_homogeneous(True)
         css_rules = []
         for index, hex_color in enumerate(_ACCENT_PRESETS):
             swatch = Gtk.Button()
             swatch.add_css_class("circular")
             swatch.add_css_class(f"sn-swatch-{index}")
-            swatch.set_size_request(20, 20)
+            swatch.set_size_request(24, 24)
             css_rules.append(
                 f".sn-swatch-{index} {{ background: {hex_color};"
-                " min-width: 20px; min-height: 20px; }"
+                " min-width: 24px; min-height: 24px; border: 2px solid"
+                " transparent; }"
+                f".sn-swatch-{index}:hover {{ border-color: white; }}"
             )
             swatch.connect("clicked", self._on_accent_chosen, hex_color)
             presets_row.append(swatch)
@@ -142,6 +182,7 @@ class SettingsPanel(Gtk.Popover):
 
     def _on_accent_chosen(self, _button, hex_color):
         self._store.set("accent_color", hex_color)
+        self._accent_label.set_label(hex_color)
         theme_manager.set_accent_tint(hex_color)
 
     def _on_custom_accent_apply(self, _button):
@@ -153,7 +194,7 @@ class SettingsPanel(Gtk.Popover):
 
     def _build_contrast_row(self):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        row.append(Gtk.Label(label="Contrast", xalign=0, hexpand=True))
+        row.append(Gtk.Label(label="High contrast", xalign=0, hexpand=True))
         switch = Gtk.Switch()
         switch.set_active(self._store.get("contrast") == "high")
         switch.connect("state-set", self._on_contrast_toggled)
@@ -222,7 +263,6 @@ class SettingsPanel(Gtk.Popover):
         return self._extensions_box
 
     def _rebuild_extensions_list(self):
-        # Keep the "Extensions" header (first child), drop the rest.
         child = self._extensions_box.get_first_child()
         if child is not None:
             child = child.get_next_sibling()
@@ -248,10 +288,6 @@ class SettingsPanel(Gtk.Popover):
 
     def _on_extension_toggled(self, _switch, state, name):
         set_extension_enabled(name, state)
-        # Re-scan so the change takes effect immediately, without a
-        # restart. Extensions being disabled mid-session don't get an
-        # on_shell_stop hook (none exists yet) — they simply stop
-        # receiving future hook calls.
         registry.load()
         return False
 
@@ -261,7 +297,7 @@ class SettingsPanel(Gtk.Popover):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         box.append(Gtk.Label(label="Keybindings", xalign=0))
         for key, description in _KEYBINDINGS:
-            box.append(Gtk.Label(label=f"{key} — {description}", xalign=0))
+            box.append(Gtk.Label(label=f"{key} \u2014 {description}", xalign=0))
         return box
 
     # -- about ----------------------------------------------------------

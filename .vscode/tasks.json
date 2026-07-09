@@ -3,11 +3,17 @@
     "tasks": [
         {
             "label": "Run Sugar Next",
-            "detail": "terminal task: launch the Sugar Next shell",
+            "detail": "terminal task: launch the Sugar Next shell (editable source)",
             "type": "shell",
-            "command": "${env:HOME}/.local/share/sugar-next/venv/bin/sugar-next",
+            "command": "${env:HOME}/.local/share/sugar-next/venv/bin/python3",
+            "args": [
+                "${workspaceFolder}/sugar-next/sugar_next/shell/main.py"
+            ],
             "options": {
-                "cwd": "${workspaceFolder}/sugar-next"
+                "cwd": "${workspaceFolder}/sugar-next",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/sugar-next"
+                }
             },
             "group": {
                 "kind": "build",
