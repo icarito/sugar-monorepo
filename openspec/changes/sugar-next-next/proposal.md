@@ -2,11 +2,12 @@
 
 `sugar-next` (Fases 1-4) shipped a working GTK4 shell: App Grid, extension
 API, Frame, and an opt-in Journal, all installable via `bootstrap.sh`. That
-change's proposal is fully satisfied and has been archived. The remaining
-scope sketched in its `design.md` — a pluggable, user-customizable Home
-View, exploratory peer collaboration, deeper Journal integration, and
-community outreach — was deferred rather than dropped, so it needs its own
-change to avoid re-opening an already-archived proposal.
+change's proposal success criteria are fully satisfied, and it is being
+archived alongside this proposal. The remaining scope sketched in its
+`design.md` — a pluggable, user-customizable Home View, exploratory peer
+collaboration, deeper Journal integration, and community outreach — was
+deferred rather than dropped, so it needs its own change to avoid
+re-opening an already-archived proposal.
 
 ## What Changes
 
