@@ -73,12 +73,18 @@ Then:
 ```sh
 git clone https://github.com/icarito/sugar-monorepo.git
 cd sugar-monorepo/sugar-next
-./bootstrap.sh        # pip install --user + desktop menu entry
+./bootstrap.sh        # venv install + desktop menu entry
 sugar-next
 ```
 
-`bootstrap.sh` installs the package with `pip install --user` and drops a
-`.desktop` entry, so Sugar Next also appears in your normal app menu.
+`bootstrap.sh` installs the package into a dedicated venv
+(`${XDG_DATA_HOME:-~/.local/share}/sugar-next/venv`, built with
+`--system-site-packages` so PyGObject resolves against your distro's GTK4
+bindings instead of trying to rebuild them from PyPI), symlinks the
+`sugar-next` launcher into `${XDG_BIN_HOME:-~/.local/bin}`, and drops a
+`.desktop` entry pointing at that venv — so Sugar Next also appears in your
+normal app menu. This avoids `pip install --user`, which fails outright on
+PEP 668 externally-managed distros like Arch.
 
 ### Option 2: plain pip
 
