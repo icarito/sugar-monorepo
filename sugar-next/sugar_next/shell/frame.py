@@ -13,7 +13,8 @@ from pathlib import Path
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gtk, Gio
+gi.require_version("Gdk", "4.0")
+from gi.repository import Gdk, Gtk, Gio
 
 
 def _favorites_file() -> Path:
@@ -81,12 +82,25 @@ class SugarFrame(Gtk.Revealer):
         self.set_valign(Gtk.Align.START)
         self.set_halign(Gtk.Align.FILL)
 
+        provider = Gtk.CssProvider()
+        provider.load_from_string(
+            """
+            .frame-bar {
+                background-color: #282850;
+                border-radius: 0 0 12px 12px;
+                padding: 8px 16px;
+                min-height: 48px;
+            }
+            """
+        )
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
+
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         bar.add_css_class("frame-bar")
-        bar.set_margin_start(8)
-        bar.set_margin_end(8)
-        bar.set_margin_top(4)
-        bar.set_margin_bottom(4)
         self.set_child(bar)
 
         self._favorites_box = Gtk.Box(

@@ -32,7 +32,7 @@
 - [x] **4.2** Write Journal extension (SQLite backend)
 - [x] **4.3** Create OCI image for `podman run`
 - [x] **4.4** Write minimal `bootstrap.sh` — `pip install` + `.desktop` entry
-- [ ] **4.5** Write documentation + demo video (docs done: README + extension API doc; demo video pending)
+- [x] **4.5** Write documentation + demo video (README + extension API doc + `sugar-next/docs/demo.mp4`)
 
 ## Community
 

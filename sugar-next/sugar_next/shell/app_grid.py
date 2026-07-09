@@ -149,12 +149,14 @@ class SugarAppGrid(Gtk.Box):
     def _on_search_changed(self, entry):
         self._flow_box.invalidate_filter()
 
-    def _filter_func(self, cell):
-        if cell is None:
+    def _filter_func(self, child):
+        # FlowBox wraps each cell in a Gtk.FlowBoxChild.
+        if child is None:
             return False
         text = self._search_entry.get_text()
         if not text:
             return True
+        cell = child.get_child() if isinstance(child, Gtk.FlowBoxChild) else child
         if hasattr(cell, "bundle"):
             return text.lower() in cell.bundle.name.lower()
         return False
