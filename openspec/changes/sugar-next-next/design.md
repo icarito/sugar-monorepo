@@ -129,6 +129,19 @@ for the Journal to keep working.
   would track the systemd transient scope via `org.freedesktop.systemd1`
   and its `JobRemoved` signal, deferred as unnecessary complexity unless
   it proves flaky in practice.
+- **`on_app_close` never fires at all for `DBusActivatable` apps** (e.g.
+  Nautilus, GNOME Connections). Discovered during manual testing: these
+  apps are launched via a D-Bus `Activate` call, not `fork+exec`, and
+  `Gio.AppLaunchContext`'s `"launched"` signal reports `pid=0` for them —
+  not a real process to watch. `desktop_bundle.py`'s `_on_launched` now
+  skips close-tracking when `pid` is falsy, which stops the app from
+  getting stuck in the Frame forever (the original bug), but does **not**
+  make the icon disappear when the learner closes the window — under the
+  `on_app_close` fallback path there is no way to detect that without
+  real window tracking. → Only `wlr-foreign-toplevel-management` (section
+  10; unverified on a real Wayfire session, see 10.4) can fix this
+  properly, since it tracks windows, not processes. Documented as a known
+  gap of the fallback path, not silently masked.
 
 ## Migration Plan
 

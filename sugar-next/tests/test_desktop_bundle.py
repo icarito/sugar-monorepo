@@ -85,3 +85,29 @@ def test_launch_fires_on_app_close_when_process_exits(tmp_path, monkeypatch):
     loop.run()
 
     assert ("on_app_close", "smoke.desktop") in fired
+
+
+def test_pid_zero_does_not_register_a_close_watch(tmp_path, monkeypatch):
+    # Regression: DBusActivatable apps (Nautilus, GNOME Connections, ...)
+    # are launched via D-Bus Activate rather than fork+exec, and report
+    # pid=0 in the "launched" signal's platform_data. GLib.child_watch_add
+    # on pid 0 never fires, so on_app_close would never fire either —
+    # leaving the app stuck in the Frame forever. _on_launched must skip
+    # watch registration for pid=0 instead of treating it like a real PID.
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    bundle, _ = _marker_bundle(tmp_path)
+
+    from sugar_next import bundles
+
+    watch_calls = []
+    monkeypatch.setattr(
+        bundles.desktop_bundle,
+        "_watch_for_close",
+        lambda app_id, app_info, pid: watch_calls.append(pid),
+    )
+
+    bundle._on_launched(None, bundle.app_info, {"pid": 0})
+    assert watch_calls == []
+
+    bundle._on_launched(None, bundle.app_info, {"pid": 12345})
+    assert watch_calls == [12345]

@@ -71,7 +71,15 @@ class DesktopBundle:
 
     def _on_launched(self, context, app_info, platform_data):
         pid = dict(platform_data).get("pid") if platform_data else None
-        if pid is not None:
+        # DBusActivatable apps (Nautilus, GNOME Connections, ...) are
+        # launched via a D-Bus Activate call rather than fork+exec, and
+        # report pid=0 — not a real process to watch. GLib.child_watch_add
+        # on pid 0 never fires, so the app would stay stuck in the Frame
+        # forever. Skip close-tracking for these; on_app_close simply
+        # never fires for them under the fallback path (real window
+        # tracking via wlr-foreign-toplevel-management, when available,
+        # is unaffected — it tracks windows, not processes).
+        if pid:
             _watch_for_close(self.app_id, self.app_info, pid)
 
     @staticmethod
