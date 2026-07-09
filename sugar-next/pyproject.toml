@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sugar-next"
+version = "0.1.0"
+description = "Sugar Next — Modern shell for Sugar Labs"
+requires-python = ">=3.10"
+license = {text = "GPL-3.0-or-later"}
+dependencies = [
+    "pygobject>=3.42",
+]
+
+[project.scripts]
+sugar-next = "sugar_next.shell.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sugar_next*"]

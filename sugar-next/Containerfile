@@ -1,0 +1,26 @@
+# Sugar Next OCI image.
+#
+# Build:
+#   podman build -t sugar-next -f Containerfile .
+#
+# Run (Wayland; shares the host compositor socket):
+#   podman run --rm \
+#     -e WAYLAND_DISPLAY -e XDG_RUNTIME_DIR \
+#     -v "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" \
+#     --userns=keep-id \
+#     sugar-next
+
+FROM registry.fedoraproject.org/fedora-minimal:42
+
+RUN microdnf install -y \
+        python3 python3-pip python3-gobject gtk4 \
+        adwaita-icon-theme \
+    && microdnf clean all
+
+WORKDIR /opt/sugar-next
+COPY pyproject.toml ./
+COPY sugar_next ./sugar_next
+COPY examples ./examples
+RUN pip install --no-cache-dir .
+
+CMD ["sugar-next"]
