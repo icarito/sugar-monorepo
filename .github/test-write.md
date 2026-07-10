@@ -1,1 +1,1 @@
-Write test successful
+deleted
