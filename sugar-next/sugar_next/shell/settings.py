@@ -78,7 +78,11 @@ class SettingsWindow(Gtk.Window):
     def __init__(self, home_view=None, store=None, shell=None):
         super().__init__()
         self.set_title("Settings")
-        self.set_modal(True)
+        # Not modal: a modal Settings grabs all input and reads as a
+        # blocking dialog, which is confusing in a shell where you want to
+        # keep glancing at / clicking the rest of the screen. It is an
+        # ordinary top-level window you can leave open.
+        self.set_modal(False)
         self.set_default_size(480, 520)
         self.set_resizable(False)
         self.set_hide_on_close(True)
@@ -345,7 +349,7 @@ class SettingsWindow(Gtk.Window):
         if self._shell is not None and hasattr(self._shell, "set_background"):
             self._shell.set_background(path)
         if self._home_view is not None:
-            dg = self._home_view._layouts.get("desktop-grid")
+            dg = self._home_view.get_view("desktop-grid")
             if dg is not None and hasattr(dg, "set_background"):
                 dg.set_background(path)
 
@@ -394,24 +398,8 @@ class SettingsWindow(Gtk.Window):
         scrolled.set_child(box)
         scrolled.add_css_class("settings-tab-page")
 
-        # Home View layout
-        if self._home_view is not None:
-            section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-            section.add_css_class("settings-section")
-            title = Gtk.Label(label="Home View layout", xalign=0)
-            title.add_css_class("settings-section-title")
-            section.append(title)
-
-            layout_ids = self._home_view.layout_ids()
-            dropdown = Gtk.DropDown.new_from_strings(layout_ids)
-            dropdown.add_css_class("sn-dropdown")
-            if self._home_view.active_id in layout_ids:
-                dropdown.set_selected(layout_ids.index(self._home_view.active_id))
-            dropdown.connect(
-                "notify::selected", self._on_layout_changed, layout_ids
-            )
-            section.append(dropdown)
-            box.append(section)
+        # NOTE: no Home View layout selector here — views (Desktop / Apps /
+        # Search) are chosen from the Frame, not Settings (frame-views spec).
 
         # Icon size
         section2 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -458,21 +446,15 @@ class SettingsWindow(Gtk.Window):
 
         return scrolled
 
-    def _on_layout_changed(self, dropdown, _pspec, layout_ids):
-        lid = layout_ids[dropdown.get_selected()]
-        self._store.set("home_view_layout", lid)
-        if self._home_view is not None:
-            self._home_view.set_active(lid)
-
     def _on_icon_size_changed(self, dropdown, _pspec, sizes):
         size_name = sizes[dropdown.get_selected()]
         self._store.set("icon_size", size_name)
         if self._home_view is not None:
             px = icon_size_px(size_name)
-            for lid in self._home_view.layout_ids():
-                layout = self._home_view._layouts.get(lid)
-                if layout is not None and hasattr(layout, "set_icon_size"):
-                    layout.set_icon_size(px)
+            for vid in self._home_view.view_ids():
+                view = self._home_view.get_view(vid)
+                if view is not None and hasattr(view, "set_icon_size"):
+                    view.set_icon_size(px)
 
     def _on_contrast_toggled(self, _switch, state):
         level = "high" if state else "normal"

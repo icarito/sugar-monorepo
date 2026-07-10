@@ -27,7 +27,8 @@ def _favorites_file() -> Path:
 class _FrameItem(Gtk.Box):
     """Icon in the frame bar. Click launches; right-click opens a palette."""
 
-    def __init__(self, bundle, palette_actions):
+    def __init__(self, bundle, palette_actions, on_palette_shown=None,
+                 on_palette_closed=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         self.bundle = bundle
         self.set_tooltip_text(bundle.name)
@@ -62,6 +63,14 @@ class _FrameItem(Gtk.Box):
                 )
             box.append(action_button)
         self._palette.set_child(box)
+
+        # Tell the Frame when this palette opens/closes so it won't hide
+        # itself (on pointer-leave) while a palette is up — otherwise the
+        # palette, which extends below the Frame, is unusable.
+        if on_palette_shown is not None:
+            self._palette.connect("show", lambda *_: on_palette_shown())
+        if on_palette_closed is not None:
+            self._palette.connect("closed", lambda *_: on_palette_closed())
 
         right_click = Gtk.GestureClick()
         right_click.set_button(3)
@@ -114,6 +123,17 @@ class SugarFrame(Gtk.Revealer):
                     rgba(0,0,0,0.08) 100%
                 );
             }
+            .frame-view-button {
+                padding: 6px;
+                min-width: 32px;
+            }
+            .frame-view-active {
+                background: var(--sn-accent);
+                color: white;
+            }
+            .frame-view-active image {
+                -gtk-icon-filter: brightness(0) invert(1);
+            }
             """
         )
         Gtk.StyleContext.add_provider_for_display(
@@ -125,6 +145,18 @@ class SugarFrame(Gtk.Revealer):
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         bar.add_css_class("frame-bar")
         self.set_child(bar)
+
+        # View switcher on the far left — [Desktop] [Apps] [Search].
+        # Populated by set_view_switcher(); choosing a view is a
+        # navigation concern owned by the Frame, not Settings.
+        self._views_box = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=4
+        )
+        self._views_box.add_css_class("frame-views")
+        bar.append(self._views_box)
+        bar.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
+        self._view_buttons = {}
+        self._on_view_selected = None
 
         self._favorites_box = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=4
@@ -147,9 +179,34 @@ class SugarFrame(Gtk.Revealer):
         self._settings_button.set_child(icon)
         bar.append(self._settings_button)
 
+        self._open_palettes = 0
         self._favorite_ids = self._load_favorites()
         self._running_ids = set()
         self._rebuild_favorites()
+
+    # -- palettes ----------------------------------------------------------
+
+    def _on_palette_shown(self):
+        self._open_palettes += 1
+
+    def _on_palette_closed(self):
+        self._open_palettes = max(0, self._open_palettes - 1)
+
+    def has_open_palette(self):
+        """True while any frame-item palette is open.
+
+        The shell checks this before hiding the Frame on pointer-leave, so
+        a palette (which extends below the Frame's edge) stays usable.
+        """
+        return self._open_palettes > 0
+
+    def _make_item(self, bundle, palette_actions):
+        return _FrameItem(
+            bundle,
+            palette_actions=palette_actions,
+            on_palette_shown=self._on_palette_shown,
+            on_palette_closed=self._on_palette_closed,
+        )
 
     @property
     def settings_button(self):
@@ -160,6 +217,60 @@ class SugarFrame(Gtk.Revealer):
         self._settings_button.connect(
             "clicked", lambda _b: settings_window.popup()
         )
+
+    # -- view switcher -----------------------------------------------------
+
+    #: Symbolic icon per view. Falls back to a generic icon if a view id
+    #: is unknown here, so extension-provided views still get a button.
+    _VIEW_ICONS = {
+        "desktop-grid": "user-home-symbolic",
+        "app-grid": "view-app-grid-symbolic",
+        "search-first": "system-search-symbolic",
+    }
+    _VIEW_ICON_FALLBACK = "view-grid-symbolic"
+
+    def set_view_switcher(self, views, on_select, active_id=None):
+        """Populate the view switcher.
+
+        *views* is a list of ``(view_id, label)``. Buttons are symbolic
+        icons (the label becomes the tooltip / accessible name).
+        *on_select* is called with the chosen ``view_id`` when a button is
+        clicked. The Frame closes after a selection.
+        """
+        self._on_view_selected = on_select
+        while child := self._views_box.get_first_child():
+            self._views_box.remove(child)
+        self._view_buttons = {}
+        for view_id, label in views:
+            button = Gtk.Button()
+            icon_name = self._VIEW_ICONS.get(view_id, self._VIEW_ICON_FALLBACK)
+            image = Gtk.Image.new_from_icon_name(icon_name)
+            image.set_pixel_size(20)
+            button.set_child(image)
+            button.set_tooltip_text(label)
+            button.update_property(
+                [Gtk.AccessibleProperty.LABEL], [label]
+            )
+            button.add_css_class("frame-view-button")
+            button.connect("clicked", self._on_view_button_clicked, view_id)
+            self._views_box.append(button)
+            self._view_buttons[view_id] = button
+        if active_id is not None:
+            self.set_active_view(active_id)
+
+    def _on_view_button_clicked(self, _button, view_id):
+        self.set_active_view(view_id)
+        if self._on_view_selected is not None:
+            self._on_view_selected(view_id)
+        self.set_reveal_child(False)
+
+    def set_active_view(self, view_id):
+        """Mark *view_id*'s button active (visual state only)."""
+        for vid, button in self._view_buttons.items():
+            if vid == view_id:
+                button.add_css_class("frame-view-active")
+            else:
+                button.remove_css_class("frame-view-active")
 
     def toggle(self):
         self.set_reveal_child(not self.get_reveal_child())
@@ -196,7 +307,7 @@ class SugarFrame(Gtk.Revealer):
             if app_info is None:
                 continue
             bundle = DesktopBundle(app_info)
-            item = _FrameItem(
+            item = self._make_item(
                 bundle,
                 palette_actions=[
                     ("Unpin from favorites", self._unpin_favorite),
@@ -226,7 +337,7 @@ class SugarFrame(Gtk.Revealer):
         if bundle.app_id in self._running_ids:
             return
         self._running_ids.add(bundle.app_id)
-        item = _FrameItem(
+        item = self._make_item(
             bundle,
             palette_actions=[
                 ("Pin to favorites", self.pin_favorite),

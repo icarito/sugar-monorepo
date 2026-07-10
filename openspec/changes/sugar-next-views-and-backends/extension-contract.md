@@ -33,11 +33,13 @@ def on_app_launch(app_id, app_info, **kwargs):
     print(f"launched {app_id}")
 ```
 
-### Return values
+### Return values and launch-cancel
 
-Hooks MAY return a value. The shell currently ignores all return values.
-Future hooks (e.g. `on_app_launch` returning `False` to block a launch)
-would be opt-in: existing extensions that return nothing keep working.
+Hooks MAY return a value. Most hooks ignore it. The exception is
+`on_app_launch`: returning a mapping with a truthy `"cancel"` key
+(Python `{"cancel": True}`; subprocess `{"cancel": true}`) vetoes the
+launch. Extensions that return nothing let the launch proceed, so
+existing extensions keep working unchanged.
 
 ### Lifecycle
 
@@ -60,28 +62,40 @@ Extensions are enabled by their `.py` extension and disabled by appending
 
 ### Language backends
 
-The shell loads extensions written in **Python** (the primary backend).
-Future backends may load extensions written in other languages:
+The shell loads extensions written in **Python** in-process, and other
+languages via a subprocess backend:
 
 | Language | Mechanism | Status |
 |----------|-----------|--------|
 | Python | `importlib` — synchronous, in-process | Active |
-| JavaScript (gjs) | Spawn `gjs -c "imports..."` as subprocess, communicate via JSON on stdin/stdout | Planned |
-| Any language | Subprocess with JSON/stdio protocol — the extension is any executable that speaks this protocol | Proposed |
+| JavaScript (gjs) | `*.js` file run via `gjs <file>` as a subprocess, JSON on stdin/stdout | Active |
+| Any language | Any **executable** file — run directly as a subprocess, JSON on stdin/stdout | Active |
 
-The **subprocess protocol** (proposed, not yet implemented):
+The **subprocess protocol** (implemented in `sugar_next/api/backends.py`):
+
+The shell spawns the extension once per event, writes one JSON object to
+its stdin, and reads one JSON object from its stdout. Positional hook
+arguments are passed as `a0`, `a1`, …; non-JSON arguments (e.g. a
+`Gio.AppInfo`) are dropped. The subprocess must reply within a short
+timeout or the event is abandoned.
 
 ```
-# Shell → extension (stdin, one JSON object per line)
-{"event": "on_app_launch", "args": {"app_id": "firefox.desktop", "app_name": "Firefox"}}
+# Shell → extension (stdin, one JSON object)
+{"event": "on_app_launch", "args": {"a0": "firefox.desktop"}}
 
-# Extension → shell (stdout, one JSON object per line)
+# Extension → shell (stdout, one JSON object)
 {"ok": true}
-# or
+# or, to veto an on_app_launch:
+{"cancel": true}
+# or, to report a fault (logged, treated as no-op):
 {"error": "something went wrong"}
 ```
 
-This protocol decouples the extension language from the shell entirely.
+Routing: `*.js` → the gjs backend (skipped with a log line if `gjs` is
+not installed); any other **executable** file → the generic subprocess
+backend; `*.py` is always in-process. Same best-effort isolation as
+Python: a crash, hang, or `{"error": ...}` is logged and never affects
+the shell or other extensions.
 
 ### Error isolation
 

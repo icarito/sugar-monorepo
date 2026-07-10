@@ -1,10 +1,12 @@
-"""Home View layout interface.
+"""Home View container.
 
-A Home View layout is any widget implementing ``HomeViewLayout``:
-``on_activate``/``on_deactivate`` are called when the layout becomes the
-visible Home View, and ``root`` is the ``Gtk.Widget`` to display. Built-in
-layouts are app-grid, desktop-grid, and search-first; extensions may
-provide additional layouts implementing the same interface.
+A **view** is a way of seeing your system — Desktop, Apps, Search — that
+the learner navigates between from the Frame (not a layout selected in
+Settings; see the frame-views spec). Each view is a ``Gtk.Widget`` that
+declares a ``view_id`` class attribute and MAY define ``on_activate`` /
+``on_deactivate`` methods, called when it becomes visible or is switched
+away from. There is no base class or mixin to inherit: a view is anything
+with a ``view_id`` — duck typing keeps the contract to one attribute.
 """
 
 import gi
@@ -13,65 +15,46 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk
 
 
-class HomeViewLayout:
-    """Mixin every Home View layout widget implements.
-
-    Subclasses are expected to also subclass a ``Gtk.Widget`` so ``root``
-    can simply return ``self``.
-    """
-
-    #: Stable identifier used in Settings and the school-lock policy file.
-    layout_id = None
-
-    #: Human-readable name shown in the Settings layout selector.
-    layout_name = None
-
-    @property
-    def root(self) -> Gtk.Widget:
-        """The widget to place in the Home View container."""
-        return self
-
-    def on_activate(self):
-        """Called when this layout becomes the visible Home View."""
-
-    def on_deactivate(self):
-        """Called when switching away from this layout."""
-
-
 class HomeView(Gtk.Stack):
-    """Container that swaps between registered Home View layouts."""
+    """Container that swaps between registered views."""
 
     __gtype_name__ = "SugarNextHomeView"
 
     def __init__(self):
         super().__init__()
         self.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        self._layouts = {}
+        self._views = {}
         self._active_id = None
 
-    def add_layout(self, layout: HomeViewLayout, set_active=False):
-        if layout.layout_id is None:
-            raise ValueError("layout_id must be set on the layout instance")
-        self._layouts[layout.layout_id] = layout
-        self.add_named(layout.root, layout.layout_id)
+    def add_view(self, view, set_active=False):
+        view_id = getattr(view, "view_id", None)
+        if view_id is None:
+            raise ValueError("a view must declare a view_id")
+        self._views[view_id] = view
+        self.add_named(view, view_id)
         if set_active or self._active_id is None:
-            self.set_active(layout.layout_id)
+            self.set_active(view_id)
 
-    def set_active(self, layout_id):
-        if layout_id not in self._layouts:
-            raise KeyError(f"unknown layout {layout_id!r}")
-        if layout_id == self._active_id:
+    def set_active(self, view_id):
+        if view_id not in self._views:
+            raise KeyError(f"unknown view {view_id!r}")
+        if view_id == self._active_id:
             return
-        previous = self._layouts.get(self._active_id)
-        if previous is not None:
+        previous = self._views.get(self._active_id)
+        if previous is not None and hasattr(previous, "on_deactivate"):
             previous.on_deactivate()
-        self._active_id = layout_id
-        self.set_visible_child_name(layout_id)
-        self._layouts[layout_id].on_activate()
+        self._active_id = view_id
+        self.set_visible_child_name(view_id)
+        current = self._views[view_id]
+        if hasattr(current, "on_activate"):
+            current.on_activate()
 
     @property
     def active_id(self):
         return self._active_id
 
-    def layout_ids(self):
-        return list(self._layouts.keys())
+    def view_ids(self):
+        return list(self._views.keys())
+
+    def get_view(self, view_id):
+        return self._views.get(view_id)

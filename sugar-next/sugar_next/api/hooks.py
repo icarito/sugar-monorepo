@@ -103,7 +103,13 @@ class HookRegistry:
         self._internal_listeners.setdefault(hook_name, []).append(callback)
 
     def load(self, directory=None):
-        """Scan a directory for extension files and collect their hooks."""
+        """Scan a directory for extension files and collect their hooks.
+
+        Python extensions (``*.py``) run in-process. Other files are
+        handed to a language backend (see ``api/backends.py``): ``*.js``
+        via gjs, executables via a generic subprocess. Disabled
+        extensions (``*.disabled``) are skipped by the globs below.
+        """
         directory = Path(directory) if directory is not None else extensions_dir()
         self._hooks = {name: [] for name in HOOK_NAMES}
         self._loaded = True
@@ -118,6 +124,25 @@ class HookRegistry:
                 if callable(fn):
                     self._hooks[name].append(fn)
             log.info("Loaded extension %s", path.name)
+        self._load_backends(directory)
+
+    def _load_backends(self, directory):
+        """Load non-Python extensions via subprocess language backends."""
+        from sugar_next.api.backends import make_backend
+
+        for path in sorted(directory.iterdir()):
+            if path.suffix == ".py" or path.name.endswith(_DISABLED_SUFFIX):
+                continue
+            if not path.is_file():
+                continue
+            backend = make_backend(path)
+            if backend is None:
+                continue
+            # A subprocess extension may implement any hook; the backend
+            # dispatches by name, so register a caller for every hook.
+            for name in HOOK_NAMES:
+                self._hooks[name].append(backend.hook(name))
+            log.info("Loaded extension %s (subprocess backend)", path.name)
 
     def _import(self, path):
         # Extension filenames may contain dashes, so they get a synthetic
@@ -133,21 +158,41 @@ class HookRegistry:
             return None
 
     def call(self, hook_name, *args, **kwargs):
-        """Invoke every extension and internal listener for *hook_name*."""
+        """Invoke every extension and internal listener for *hook_name*.
+
+        Return values are collected and returned as a list, in call order
+        (internal listeners first, then extensions). Callers that don't
+        care about return values (most hooks) can ignore it.
+        """
         if not self._loaded:
             self.load()
+        results = []
         for fn in self._internal_listeners.get(hook_name, ()):
             try:
-                fn(*args, **kwargs)
+                results.append(fn(*args, **kwargs))
             except Exception:
                 log.exception("Internal hook listener %s failed", hook_name)
         for fn in self._hooks.get(hook_name, ()):
             try:
-                fn(*args, **kwargs)
+                results.append(fn(*args, **kwargs))
             except Exception:
                 log.exception(
                     "Extension hook %s failed in %s", hook_name, fn.__module__
                 )
+        return results
+
+    def call_is_cancelled(self, hook_name, *args, **kwargs):
+        """Call *hook_name* and report whether any hook cancelled.
+
+        A hook cancels an action by returning a mapping with a truthy
+        ``"cancel"`` key (e.g. ``{"cancel": True}``). Hooks that return
+        nothing — the overwhelming majority — never cancel, so existing
+        extensions keep working unchanged.
+        """
+        for result in self.call(hook_name, *args, **kwargs):
+            if isinstance(result, dict) and result.get("cancel"):
+                return True
+        return False
 
 
 #: Shared registry used by the shell.

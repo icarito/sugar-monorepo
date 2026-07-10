@@ -64,7 +64,12 @@ class DesktopBundle:
         return categories.split(";")[0] or None
 
     def launch(self):
-        hook_registry.call("on_app_launch", self.app_id, self.app_info)
+        # An on_app_launch hook may veto the launch by returning
+        # {"cancel": True}; extensions that return nothing let it proceed.
+        if hook_registry.call_is_cancelled(
+            "on_app_launch", self.app_id, self.app_info
+        ):
+            return False
         launch_context = Gio.AppLaunchContext()
         launch_context.connect("launched", self._on_launched)
         return self.app_info.launch(None, launch_context)

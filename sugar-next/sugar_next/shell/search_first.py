@@ -10,7 +10,6 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gtk, Pango
 
-from sugar_next.shell.home_view import HomeViewLayout
 
 
 class _ResultRow(Gtk.Box):
@@ -42,11 +41,11 @@ class _ResultRow(Gtk.Box):
         self.add_controller(click)
 
 
-class SugarSearchFirst(Gtk.Box, HomeViewLayout):
+class SugarSearchFirst(Gtk.Box):
     __gtype_name__ = "SugarNextSearchFirst"
 
-    layout_id = "search-first"
-    layout_name = "Search First"
+    view_id = "search-first"
+    view_name = "Search"
 
     _CSS = """
         .search-result-row {
@@ -140,5 +139,6 @@ class SugarSearchFirst(Gtk.Box, HomeViewLayout):
         pass
 
     def on_deactivate(self):
-        self._search_entry.set_text("")
-        self._results.set_visible(False)
+        # Preserve search text and results across view switches
+        # (frame-views spec). Nothing is reset.
+        pass

@@ -101,3 +101,39 @@ def test_remove_running_unknown_app_is_a_no_op(tmp_path, monkeypatch):
     frame.add_running(_stub_bundle("app.desktop"))
     frame.remove_running("never-launched.desktop")
     assert _running_box_count(frame) == 1
+
+
+def test_view_switcher_selects_and_persists(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    frame = SugarFrame()
+    chosen = []
+    frame.set_view_switcher(
+        [("desktop-grid", "Desktop"), ("app-grid", "Apps"),
+         ("search-first", "Search")],
+        on_select=chosen.append,
+        active_id="desktop-grid",
+    )
+    # Clicking a view button reports the id and closes the Frame.
+    frame.reveal()
+    frame._view_buttons["app-grid"].emit("clicked")
+    assert chosen == ["app-grid"]
+    assert frame.get_reveal_child() is False
+    # Active view button carries the active css class.
+    assert frame._view_buttons["app-grid"].has_css_class("frame-view-active")
+    assert not frame._view_buttons["desktop-grid"].has_css_class(
+        "frame-view-active"
+    )
+
+
+def test_set_active_view_updates_only_visual_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    frame = SugarFrame()
+    called = []
+    frame.set_view_switcher(
+        [("desktop-grid", "Desktop"), ("app-grid", "Apps")],
+        on_select=called.append,
+    )
+    # Programmatic set_active_view must not fire the select callback.
+    frame.set_active_view("app-grid")
+    assert called == []
+    assert frame._view_buttons["app-grid"].has_css_class("frame-view-active")

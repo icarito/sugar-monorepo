@@ -46,7 +46,7 @@ def test_launch_runs_exec_and_fires_hook(tmp_path, monkeypatch):
     monkeypatch.setattr(
         hooks.registry,
         "call",
-        lambda name, *args, **kw: fired.append((name, args[0])),
+        lambda name, *args, **kw: fired.append((name, args[0])) or [],
     )
 
     assert bundle.launch() is True
@@ -68,7 +68,7 @@ def test_launch_fires_on_app_close_when_process_exits(tmp_path, monkeypatch):
     monkeypatch.setattr(
         hooks.registry,
         "call",
-        lambda name, *args, **kw: fired.append((name, args[0])),
+        lambda name, *args, **kw: fired.append((name, args[0])) or [],
     )
 
     assert bundle.launch() is True

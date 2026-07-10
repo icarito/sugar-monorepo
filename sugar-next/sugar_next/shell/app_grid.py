@@ -4,7 +4,6 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gtk, Gio, GLib, Pango
 
-from sugar_next.shell.home_view import HomeViewLayout
 
 
 class _AppGridCell(Gtk.Box):
@@ -69,11 +68,11 @@ class _AppGridCell(Gtk.Box):
         popover.popup()
 
 
-class SugarAppGrid(Gtk.Box, HomeViewLayout):
+class SugarAppGrid(Gtk.Box):
     __gtype_name__ = "SugarNextAppGrid"
 
-    layout_id = "app-grid"
-    layout_name = "App Grid"
+    view_id = "app-grid"
+    view_name = "Apps"
 
     _CSS = """
         .app-grid-cell {
@@ -178,8 +177,9 @@ class SugarAppGrid(Gtk.Box, HomeViewLayout):
         pass
 
     def on_deactivate(self):
-        self._search_entry.set_text("")
-        self._scrolled.get_vadjustment().set_value(0)
+        # Views preserve their own state (search text, scroll position)
+        # across switches — see the frame-views spec. Nothing is reset.
+        pass
 
     def _filter_func(self, child):
         # FlowBox wraps each cell in a Gtk.FlowBoxChild.

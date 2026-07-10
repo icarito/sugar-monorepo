@@ -23,12 +23,12 @@ def test_add_and_switch_layouts():
     desktop_grid = SugarDesktopGrid()
     search_first = SugarSearchFirst()
 
-    home_view.add_layout(app_grid, set_active=True)
-    home_view.add_layout(desktop_grid)
-    home_view.add_layout(search_first)
+    home_view.add_view(app_grid, set_active=True)
+    home_view.add_view(desktop_grid)
+    home_view.add_view(search_first)
 
     assert home_view.active_id == "app-grid"
-    assert set(home_view.layout_ids()) == {
+    assert set(home_view.view_ids()) == {
         "app-grid",
         "desktop-grid",
         "search-first",
@@ -41,36 +41,39 @@ def test_add_and_switch_layouts():
     assert home_view.active_id == "desktop-grid"
 
 
-def test_switching_resets_app_grid_search_state():
+def test_switching_preserves_app_grid_search_state():
+    # Views preserve their own state across switches (frame-views spec).
     home_view = HomeView()
     app_grid = SugarAppGrid()
     search_first = SugarSearchFirst()
-    home_view.add_layout(app_grid, set_active=True)
-    home_view.add_layout(search_first)
+    home_view.add_view(app_grid, set_active=True)
+    home_view.add_view(search_first)
 
     app_grid._search_entry.set_text("firefox")
     home_view.set_active("search-first")
+    home_view.set_active("app-grid")
 
-    assert app_grid._search_entry.get_text() == ""
+    assert app_grid._search_entry.get_text() == "firefox"
 
 
-def test_switching_resets_search_first_state():
+def test_switching_preserves_search_first_state():
     home_view = HomeView()
     app_grid = SugarAppGrid()
     search_first = SugarSearchFirst()
-    home_view.add_layout(app_grid, set_active=True)
-    home_view.add_layout(search_first)
+    home_view.add_view(app_grid, set_active=True)
+    home_view.add_view(search_first)
 
     home_view.set_active("search-first")
     search_first._search_entry.set_text("something")
     home_view.set_active("app-grid")
+    home_view.set_active("search-first")
 
-    assert search_first._search_entry.get_text() == ""
+    assert search_first._search_entry.get_text() == "something"
 
 
 def test_unknown_layout_raises():
     home_view = HomeView()
     app_grid = SugarAppGrid()
-    home_view.add_layout(app_grid, set_active=True)
+    home_view.add_view(app_grid, set_active=True)
     with pytest.raises(KeyError):
         home_view.set_active("does-not-exist")

@@ -11,7 +11,6 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gtk, Pango
 
-from sugar_next.shell.home_view import HomeViewLayout
 
 _UNCATEGORIZED = "Apps"
 
@@ -41,11 +40,11 @@ class _IconCell(Gtk.Box):
         self.add_controller(click)
 
 
-class SugarDesktopGrid(Gtk.Overlay, HomeViewLayout):
+class SugarDesktopGrid(Gtk.Overlay):
     __gtype_name__ = "SugarNextDesktopGrid"
 
-    layout_id = "desktop-grid"
-    layout_name = "Desktop Grid"
+    view_id = "desktop-grid"
+    view_name = "Desktop"
 
     _CSS = """
         .desktop-grid-cell {
@@ -197,4 +196,5 @@ class SugarDesktopGrid(Gtk.Overlay, HomeViewLayout):
         pass
 
     def on_deactivate(self):
-        self._stack.set_visible_child_name("root")
+        # Preserve the open folder across view switches (frame-views spec).
+        pass

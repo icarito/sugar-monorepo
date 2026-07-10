@@ -24,29 +24,24 @@ def test_builds_without_home_view(tmp_path):
     assert panel.get_child() is not None
 
 
-def test_layout_row_present_with_home_view(tmp_path):
+def test_builds_with_home_view(tmp_path):
     store = SettingsStore(tmp_path / "settings.json")
     home_view = HomeView()
-    home_view.add_layout(SugarAppGrid(), set_active=True)
-    home_view.add_layout(SugarSearchFirst())
+    home_view.add_view(SugarAppGrid(), set_active=True)
+    home_view.add_view(SugarSearchFirst())
     panel = SettingsPanel(home_view=home_view, store=store)
     assert panel.get_child() is not None
 
 
-def test_layout_change_updates_store_and_home_view(tmp_path):
+def test_settings_has_no_layout_selector(tmp_path):
+    # Views are chosen from the Frame, not Settings (frame-views spec):
+    # the layout selector and its handler are gone.
     store = SettingsStore(tmp_path / "settings.json")
     home_view = HomeView()
-    home_view.add_layout(SugarAppGrid(), set_active=True)
-    home_view.add_layout(SugarSearchFirst())
+    home_view.add_view(SugarAppGrid(), set_active=True)
+    home_view.add_view(SugarSearchFirst())
     panel = SettingsPanel(home_view=home_view, store=store)
-
-    panel._on_layout_changed(
-        type("Dropdown", (), {"get_selected": lambda self: 1})(),
-        None,
-        home_view.layout_ids(),
-    )
-    assert home_view.active_id == home_view.layout_ids()[1]
-    assert store.get("home_view_layout") == home_view.layout_ids()[1]
+    assert not hasattr(panel, "_on_layout_changed")
 
 
 def test_accent_choice_updates_store(tmp_path):

@@ -155,13 +155,25 @@ class SugarShell(Gtk.Application):
         self.desktop_grid.populate(bundled)
 
         self.home_view = HomeView()
-        self.home_view.add_layout(self.app_grid, set_active=True)
-        self.home_view.add_layout(self.search_first)
-        self.home_view.add_layout(self.desktop_grid)
+        self.home_view.add_view(self.app_grid)
+        self.home_view.add_view(self.search_first)
+        self.home_view.add_view(self.desktop_grid, set_active=True)
 
+        # Views are navigated from the Frame (Desktop / Apps / Search),
+        # not selected in Settings. Map the user-facing view onto the
+        # underlying layout id. Order here is the Frame button order.
+        self._views = [
+            ("desktop-grid", "Desktop"),
+            ("app-grid", "Apps"),
+            ("search-first", "Search"),
+        ]
+
+        # Restore the last active view, or start in Desktop on first run.
         saved_layout = self.settings_store.get("home_view_layout")
-        if saved_layout in self.home_view.layout_ids():
+        if saved_layout in self.home_view.view_ids():
             self.home_view.set_active(saved_layout)
+        else:
+            self.home_view.set_active("desktop-grid")
 
         self._background_picture = Gtk.Picture()
         self._background_picture.set_content_fit(Gtk.ContentFit.COVER)
@@ -224,6 +236,12 @@ class SugarShell(Gtk.Application):
         # ``self.frame`` below). A manual dismiss is respected until the
         # next focus change.
         self._frame_manually_dismissed = False
+        # Clicking the handle *pins* the Frame open: a deliberate act, so
+        # it must not close just because the pointer moves into the window.
+        # Only another click on the handle (toggle), F6, or a background
+        # click dismisses a pinned Frame. Hovering the handle still reveals
+        # a transient, unpinned Frame that hides on pointer-leave.
+        self._frame_pinned = False
         # Monotonic time (µs) until which a spurious pointer `leave` right
         # after revealing the Frame must be ignored. Revealing slides the
         # Frame out from under the pointer, which fires `leave` immediately
@@ -247,6 +265,11 @@ class SugarShell(Gtk.Application):
             home_view=self.home_view, store=self.settings_store, shell=self
         )
         self.frame.set_settings_panel(self.settings_panel)
+        self.frame.set_view_switcher(
+            self._views,
+            self._on_view_selected,
+            active_id=self.home_view.active_id,
+        )
 
         key_controller = Gtk.EventControllerKey()
         key_controller.connect("key-pressed", self._on_key_pressed)
@@ -276,11 +299,27 @@ class SugarShell(Gtk.Application):
         self.frame.reveal()
 
     def _on_handle_clicked(self, _button):
-        self._reveal_frame()
+        # Clicking toggles a pinned Frame: pin it open, or unpin+close if
+        # it is already pinned.
+        if self._frame_pinned and self.frame.get_reveal_child():
+            self._frame_pinned = False
+            self.frame.set_reveal_child(False)
+        else:
+            self._frame_pinned = True
+            self._reveal_frame()
 
     def _on_frame_pointer_left(self, _controller):
+        # A pinned Frame (opened by clicking the handle) stays put no
+        # matter where the pointer goes; only an explicit dismiss closes it.
+        if self._frame_pinned:
+            return
         # Ignore the spurious leave right after a reveal (see _reveal_frame).
         if GLib.get_monotonic_time() < self._frame_leave_guard_until:
+            return
+        # Keep the Frame open while an item palette is up — the palette
+        # extends below the Frame, so the pointer "leaves" the Frame to
+        # use it; hiding now would make the palette unusable.
+        if self.frame.has_open_palette():
             return
         # Pointer left the Frame. Tuck it away — unless the shell is
         # unfocused, in which case an activity owns the screen and the
@@ -289,21 +328,37 @@ class SugarShell(Gtk.Application):
             self.frame.set_reveal_child(False)
 
     def _on_background_pressed(self, gesture, n_press, x, y):
-        # Manual dismiss: remember it so auto-Frame does not immediately
-        # re-open while the shell stays unfocused.
+        # Explicit dismiss: unpin and remember it so auto-Frame does not
+        # immediately re-open while the shell stays unfocused.
+        self._frame_pinned = False
         if not self.window.get_property("is-active"):
             self._frame_manually_dismissed = True
         self.frame.set_reveal_child(False)
 
+    #: Direct keybindings to views (frame-views spec): F1/F2/F3.
+    _VIEW_KEYS = {
+        Gdk.KEY_F1: "desktop-grid",
+        Gdk.KEY_F2: "app-grid",
+        Gdk.KEY_F3: "search-first",
+    }
+
     def _on_key_pressed(self, controller, keyval, keycode, state):
         if keyval == Gdk.KEY_F6:
-            if self.frame.get_reveal_child() and not self.window.get_property(
-                "is-active"
-            ):
-                self._frame_manually_dismissed = True
-            self.frame.toggle()
+            # F6 is a deliberate act, like clicking the handle: it pins the
+            # Frame open, or unpins+closes it if already open.
+            if self.frame.get_reveal_child():
+                self._frame_pinned = False
+                if not self.window.get_property("is-active"):
+                    self._frame_manually_dismissed = True
+                self.frame.set_reveal_child(False)
+            else:
+                self._frame_pinned = True
+                self._reveal_frame()
             return True
-        if keyval in (Gdk.KEY_F1, Gdk.KEY_F10):
+        if keyval in self._VIEW_KEYS:
+            self._activate_view(self._VIEW_KEYS[keyval])
+            return True
+        if keyval == Gdk.KEY_F10:
             if self.settings_panel.is_visible():
                 self.settings_panel.popdown()
             else:
@@ -311,6 +366,20 @@ class SugarShell(Gtk.Application):
                 self.settings_panel.popup()
             return True
         return False
+
+    def _activate_view(self, view_id):
+        """Switch to *view_id*, persist it, and sync the Frame switcher."""
+        if view_id not in self.home_view.view_ids():
+            return
+        self.home_view.set_active(view_id)
+        self.frame.set_active_view(view_id)
+        self.settings_store.set("home_view_layout", view_id)
+
+    def _on_view_selected(self, view_id):
+        # Called when a Frame view button is clicked. The Frame closes
+        # after selection (handled in frame.py), so drop any pin.
+        self._frame_pinned = False
+        self._activate_view(view_id)
 
     def _on_motion(self, controller, x, y):
         if y <= 3:
