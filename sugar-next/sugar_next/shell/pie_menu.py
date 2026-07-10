@@ -90,6 +90,13 @@ class SugarPieMenu(Gtk.Fixed):
 
     def __init__(self, on_settings=None, icon_size=48):
         super().__init__()
+        # Without expand, a Gtk.Fixed shrinks to its content's natural
+        # size — with no petals, that's just the center button, so the
+        # widget (and the "center" the button is placed at) collapses to
+        # a tiny box instead of filling the view. Expanding keeps it the
+        # full view size regardless of favorite count.
+        self.set_hexpand(True)
+        self.set_vexpand(True)
         self._on_settings = on_settings
         self._icon_size = icon_size
         self._favorite_ids = self._load_favorites()
