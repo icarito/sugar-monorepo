@@ -47,6 +47,19 @@ Full design principles: [HIG.md](HIG.md).
 - Reimplement legacy mesh collaboration (the protocols are specific to the
   XO hardware and are not being recreated here).
 
+## Status
+
+This is a **rapid prototype**. Things change fast, break, and get rewritten
+as we learn what works. We use [OpenSpec](https://github.com/Fission-AI/OpenSpec)
+to track every change — see `openspec/changes/` for the active proposals,
+designs, and task lists. If something doesn't work, **that is expected**,
+and a fix is probably already in progress.
+
+**The developer experience is a pillar of this project.** Sugar Next aims
+to be as easy to hack on as it is to use. If setting up the dev
+environment, running tests, or understanding the code feels harder than it
+should, that is a bug — please report it.
+
 ## Quick start
 
 Requires GTK4 and PyGObject from your distro:
@@ -69,22 +82,6 @@ sugar-next
 
 For Podman, pip install, and development instructions see the full
 [HIG.md](HIG.md) and the `openspec/` change documents.
-
-## Status
-
-Early but working prototype with:
-
-- Pluggable Home View (desktop grid, app grid, search-first layouts)
-- Settings panel (background, accent color, contrast, layout selector)
-- Extension API with 5 hooks (on_shell_start, on_app_launch, on_app_close, on_peer_join, on_peer_leave)
-- Frame with wlr-foreign-toplevel-management window listing
-- Opt-in Journal extension (SQLite)
-- Peer chat demo extension
-- XDG Base Directory compliance
-- Color token system (`--sn-*` CSS custom properties)
-- StatusNotifierItem and D-Bus name registration
-
-Everything tracked as OpenSpec changes under `openspec/changes/`.
 
 ## Acknowledgements
 
