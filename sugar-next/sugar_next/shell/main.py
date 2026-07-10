@@ -465,8 +465,9 @@ class SugarShell(Gtk.Application):
         )
 
     def _on_app_process_closed(self, app_id):
-        if self.toplevel_tracker.available is True:
-            return
+        # Always remove from app_state when the process exits — the
+        # toplevel tracker augments this with windows opened outside the
+        # shell, but it does not replace the shell's own process tracking.
         app_state.remove_open(app_id)
         self._launched_bundles.pop(normalize_app_id(app_id), None)
 

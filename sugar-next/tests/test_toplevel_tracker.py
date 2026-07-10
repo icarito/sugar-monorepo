@@ -4,11 +4,12 @@ This dev environment runs GNOME/Mutter, which implements neither
 zwlr_foreign_toplevel_manager_v1 nor the newer ext_foreign_toplevel_list_v1
 standard (confirmed via `wayland-info` — deliberate GNOME design choice,
 not a missing feature). So the only behavior verifiable here is protocol
-non-availability handling; the actual toplevel create/close event flow
-needs a real wlroots compositor (Wayfire/Sway) to exercise — see
-sugar-next-next tasks.md section 10.4.
+non-availability handling plus a source-level guard on the event loop;
+the actual toplevel create/close/focus event flow needs a real wlroots
+compositor (Wayfire/Hyprland) to exercise — see dev/run-wayfire.sh.
 """
 
+import inspect
 import time
 
 import pytest
@@ -50,3 +51,24 @@ def test_reports_unavailable_without_pywayland(monkeypatch):
     tracker = TopLevelTracker()
     tracker.start()
     assert tracker.available is False
+
+
+def test_event_loop_uses_flushing_roundtrip_not_bare_dispatch():
+    # Regression guard: dispatch(block=True) does NOT flush the manager
+    # bind, so the compositor never streams toplevels and no event is
+    # delivered — the tracker looked "available" but did nothing. The loop
+    # must use roundtrip() (which flushes) instead. A behavioural test
+    # would need a live wlroots compositor the CI environment lacks, so we
+    # assert the loop mechanism by source inspection to stop a refactor
+    # from silently reintroducing the broken form.
+    # Strip comments so the guard checks the actual code, not the
+    # explanatory comment that (deliberately) names the broken form.
+    code = "\n".join(
+        line.split("#", 1)[0]
+        for line in inspect.getsource(TopLevelTracker._run).splitlines()
+    )
+    assert "roundtrip()" in code, "event loop must roundtrip (flushes requests)"
+    assert "dispatch(block=True)" not in code, (
+        "dispatch(block=True) does not flush the bind; no events are "
+        "delivered — use roundtrip() in the loop"
+    )
