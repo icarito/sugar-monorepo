@@ -17,8 +17,8 @@ from gi.repository import Gdk, Gtk
 class _FrameItem(Gtk.Box):
     """Icon in the frame bar. Click launches; right-click opens a palette."""
 
-    def __init__(self, bundle, palette_actions, on_palette_shown=None,
-                 on_palette_closed=None):
+    def __init__(self, bundle, palette_actions, on_activate=None,
+                 on_palette_shown=None, on_palette_closed=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         self.bundle = bundle
         self.set_tooltip_text(bundle.name)
@@ -33,7 +33,7 @@ class _FrameItem(Gtk.Box):
         )
         image.set_pixel_size(32)
         button.set_child(image)
-        button.connect("clicked", lambda *_: bundle.launch())
+        button.connect("clicked", self._on_clicked, on_activate)
         self.append(button)
 
         self._palette = Gtk.Popover()
@@ -66,6 +66,11 @@ class _FrameItem(Gtk.Box):
         right_click.set_button(3)
         right_click.connect("pressed", lambda *_: self._palette.popup())
         button.add_controller(right_click)
+
+    def _on_clicked(self, _button, on_activate):
+        if on_activate is not None and on_activate(self.bundle):
+            return
+        self.bundle.launch()
 
     def _on_palette_action(self, button, callback):
         self._palette.popdown()
@@ -156,6 +161,10 @@ class SugarFrame(Gtk.Revealer):
 
         self._open_palettes = 0
         self._running_ids = set()
+        self._on_running_activated = None
+
+    def set_running_activated_callback(self, callback):
+        self._on_running_activated = callback
 
     # -- palettes ----------------------------------------------------------
 
@@ -177,6 +186,7 @@ class SugarFrame(Gtk.Revealer):
         return _FrameItem(
             bundle,
             palette_actions=palette_actions,
+            on_activate=self._on_running_activated,
             on_palette_shown=self._on_palette_shown,
             on_palette_closed=self._on_palette_closed,
         )

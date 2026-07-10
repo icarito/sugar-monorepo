@@ -35,6 +35,18 @@
             "problemMatcher": []
         },
         {
+            "label": "Run Sugar Next (nested Hyprland)",
+            "detail": "runs the shell inside a nested Hyprland compositor with tiling — target session compositor for standalone mode",
+            "type": "shell",
+            "command": "${workspaceFolder}/sugar-next/dev/run-hyprland-nested.sh",
+            "options": {
+                "cwd": "${workspaceFolder}/sugar-next"
+            },
+            "group": "build",
+            "isBackground": false,
+            "problemMatcher": []
+        },
+        {
             "label": "Bootstrap Sugar Next",
             "detail": "installs sugar-next into its own venv + desktop entry (sugar-next/bootstrap.sh)",
             "type": "shell",

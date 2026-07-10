@@ -20,6 +20,11 @@ dependencies = [
 # the shell falls back to on_app_close-based tracking.
 wayland-toplevels = ["pywayland>=0.4"]
 
+# Optional runtime dependency supplied by the system package manager on
+# most distros. When its GI namespace is installed, Sugar Next can run as
+# a layer-shell surface instead of a compositor-managed xdg_toplevel.
+layer-shell = []
+
 [project.scripts]
 sugar-next = "sugar_next.shell.main:main"
 

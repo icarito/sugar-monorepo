@@ -73,6 +73,41 @@ practices) rather than reinventing them at the shell layer.
 3. Small, reviewable sub-PRs against `gtk4-port` (or its resumed equivalent)
    rather than one large diff — per [[base-standards]] rule 1.
 
+## Sugar Next session target: Hyprland
+
+Sugar Next targets Hyprland as its Wayland session compositor. In a real
+Sugar Next login, Hyprland owns tiling, focus, workspaces, and the native
+stripe/bar while Sugar Next runs as the session shell and renders the Home
+View plus Frame overlay.
+
+When `HYPRLAND_INSTANCE_SIGNATURE` is present, Sugar Next reads window and
+focus state through `hyprctl clients -j`, `hyprctl activewindow -j`, and
+`hyprctl workspaces -j`; the older `TopLevelTracker` client is kept as a
+development fallback for non-Hyprland compositors such as Wayfire, Sway, or
+GNOME/Mutter. Nested development uses `AQ_BACKENDS=wayland` through
+`sugar-next/dev/run-hyprland-nested.sh`. Native login sessions should not
+set `AQ_BACKENDS`; install a `/usr/share/wayland-sessions/sugar-next.desktop`
+entry that runs `Hyprland -c /etc/sugar-next/hyprland.lua`, using
+`sugar-next/session/hyprland.lua` as the template. Hyprland's Lua config
+API uses `hl.on("hyprland.start", ...)` plus `hl.exec_cmd(...)` for
+autostart on the tested 0.55 series.
+
+Sugar Next prefers GTK layer-shell for its own root surface. If a GI
+namespace such as `Gtk4LayerShell` or `GtkLayerShell` is installed, the main
+window is initialized as a layer surface anchored to every edge; otherwise
+it falls back to a regular `xdg_toplevel` and Hyprland fullscreen window
+rules make it behave like the shell. With `gtk4-layer-shell` on Arch/CachyOS,
+PyGObject also needs the package's preload helper so `libgtk4-layer-shell`
+loads before `libwayland`; the dev runner exports
+`LD_PRELOAD=/usr/lib/liblayer-shell-preload.so` for the Sugar Next process
+when that file exists.
+
+For development under GNOME, the Hyprland Wayland backend does not request a
+host titlebar itself. `gamescope` can be tried with
+`SUGAR_NEXT_DECORATED_HOST=1`, but it is not the default because current
+gamescope may expose a newer `wl_compositor` version than this Hyprland /
+Aquamarine build accepts. The stable default runs Hyprland directly.
+
 ## Working dev environment: Casilda + sugar-toolkit-gtk4 (validated 2026-07-08)
 
 The environment gap described above is now partially closed. OpenSpec

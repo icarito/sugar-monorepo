@@ -12,6 +12,11 @@ from sugar_next.shell.app_grid import SugarAppGrid
 from sugar_next.shell.pie_menu import SugarPieMenu
 from sugar_next.shell.frame import SugarFrame
 from sugar_next.shell.home_view import HomeView
+from sugar_next.shell.hyprland_ipc import HyprlandIPC
+from sugar_next.shell.layer_shell import (
+    configure_shell_window,
+    remove_layer_shell_preload_from_env,
+)
 from sugar_next.shell.theme import manager as theme_manager
 from sugar_next.shell.palette import dominant_color_hex
 from sugar_next.shell.settings import SettingsPanel
@@ -34,6 +39,8 @@ class SugarShell(Gtk.Application):
             default_width=1024,
             default_height=768,
         )
+        self._using_layer_shell = configure_shell_window(self.window)
+        remove_layer_shell_preload_from_env()
 
         self.settings_store = SettingsStore()
         theme_manager.apply(self.window.get_display())
@@ -125,6 +132,9 @@ class SugarShell(Gtk.Application):
         )
 
         self.frame = SugarFrame()
+        self._hyprland_ipc = None
+        self._hyprland_poll_id = None
+        self._hyprland_open_ids = set()
 
         # Bundles for apps this shell launched, so the Frame can render a
         # rich item (icon + palette) when the registry reports them open.
@@ -136,12 +146,20 @@ class SugarShell(Gtk.Application):
         # is open (frame-views spec); the Frame only renders it.
         app_state.subscribe(self._sync_frame_running)
 
-        self.toplevel_tracker = TopLevelTracker(
-            on_open=self._on_toplevel_open,
-            on_close=self._on_toplevel_close,
-            on_focus=self._on_toplevel_focus,
-        )
-        self.toplevel_tracker.start()
+        self.toplevel_tracker = None
+        if HyprlandIPC.is_session():
+            self._hyprland_ipc = HyprlandIPC()
+            self._hyprland_poll_id = GLib.timeout_add(
+                HyprlandIPC.POLL_INTERVAL_MS, self._poll_hyprland_state
+            )
+            self._poll_hyprland_state()
+        else:
+            self.toplevel_tracker = TopLevelTracker(
+                on_open=self._on_toplevel_open,
+                on_close=self._on_toplevel_close,
+                on_focus=self._on_toplevel_focus,
+            )
+            self.toplevel_tracker.start()
         hook_registry.subscribe(
             "on_app_close", lambda app_id, app_info: self._on_app_process_closed(app_id)
         )
@@ -273,6 +291,7 @@ class SugarShell(Gtk.Application):
             self._on_view_selected,
             active_id=self.home_view.active_id,
         )
+        self.frame.set_running_activated_callback(self._on_frame_running_activated)
 
         key_controller = Gtk.EventControllerKey()
         key_controller.connect("key-pressed", self._on_key_pressed)
@@ -402,7 +421,11 @@ class SugarShell(Gtk.Application):
         self._hot_corner.set_can_target(not revealed)
 
     def _on_shutdown(self, app):
-        self.toplevel_tracker.stop()
+        if self._hyprland_poll_id is not None:
+            GLib.source_remove(self._hyprland_poll_id)
+            self._hyprland_poll_id = None
+        if self.toplevel_tracker is not None:
+            self.toplevel_tracker.stop()
 
     def _on_app_launched(self, bundle):
         self._launched_bundles[normalize_app_id(bundle.app_id)] = bundle
@@ -447,6 +470,8 @@ class SugarShell(Gtk.Application):
         app_state.add_open(wayland_app_id)
 
     def _on_toplevel_close(self, wayland_app_id, title):
+        if self.toplevel_tracker is None:
+            return
         if self.toplevel_tracker.available is not True:
             return
         # Only drop the app once its *last* window is gone.
@@ -463,6 +488,32 @@ class SugarShell(Gtk.Application):
             state.get("app_id") == wayland_app_id
             for state in self.toplevel_tracker._toplevels.values()
         )
+
+    def _poll_hyprland_state(self):
+        if self._hyprland_ipc is None:
+            return False
+        try:
+            state = self._hyprland_ipc.snapshot()
+        except Exception:
+            return True
+
+        next_open = {
+            client.normalized_app_id
+            for client in state.clients
+            if client.normalized_app_id
+        }
+        for app_id in next_open - self._hyprland_open_ids:
+            app_state.add_open(app_id)
+        for app_id in self._hyprland_open_ids - next_open:
+            app_state.remove_open(app_id)
+        self._hyprland_open_ids = next_open
+        app_state.set_focused(state.focused_app_id)
+        return True
+
+    def _on_frame_running_activated(self, bundle):
+        if self._hyprland_ipc is None:
+            return False
+        return self._hyprland_ipc.focus_window(bundle.app_id)
 
     def _on_app_process_closed(self, app_id):
         # Always remove from app_state when the process exits — the

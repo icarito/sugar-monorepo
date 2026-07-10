@@ -33,6 +33,14 @@
             "cwd": "${workspaceFolder}/sugar-next"
         },
         {
+            "name": "Sugar Next (nested Hyprland — session host)",
+            "detail": "runs the shell inside a nested Hyprland compositor with tiling; target session compositor for Sugar Next standalone mode",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "${workspaceFolder}/sugar-next/dev/run-hyprland-nested.sh",
+            "cwd": "${workspaceFolder}/sugar-next"
+        },
+        {
             "name": "Sugar Next (editable src)",
             "detail": "runs against sugar-next/sugar_next in-place, for active development",
             "type": "debugpy",
