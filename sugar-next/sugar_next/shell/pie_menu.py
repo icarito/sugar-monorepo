@@ -25,15 +25,25 @@ def _favorites_file() -> Path:
     return Path(data_home) / "sugar-next" / "favorites.json"
 
 
-class _Petal(Gtk.Button):
-    """One favorite, positioned on the circle via Gtk.Fixed coordinates."""
+class _Petal(Gtk.Box):
+    """One favorite, positioned on the circle via Gtk.Fixed coordinates.
+
+    Clicking the icon launches the app — the common case, kept to one
+    click for consistency with the Frame's icons. Unpinning goes through
+    a small, always-visible menu button rather than a hidden right-click
+    (right-click has no reliable discovery path and doesn't exist on
+    touch), opening a palette the same way the Frame's icons do.
+    """
 
     def __init__(self, bundle, on_activate, on_unpin, icon_size=48):
-        super().__init__()
+        super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.bundle = bundle
-        self.add_css_class("flat")
-        self.add_css_class("pie-menu-petal")
-        self.set_tooltip_text(bundle.name)
+        self.add_css_class("pie-menu-petal-box")
+
+        launch_button = Gtk.Button()
+        launch_button.add_css_class("flat")
+        launch_button.add_css_class("pie-menu-petal")
+        launch_button.set_tooltip_text(bundle.name)
 
         icon = bundle.icon
         image = (
@@ -42,14 +52,30 @@ class _Petal(Gtk.Button):
             else Gtk.Image.new_from_icon_name("application-x-executable")
         )
         image.set_pixel_size(icon_size)
-        self.set_child(image)
+        launch_button.set_child(image)
+        launch_button.connect("clicked", lambda *_: on_activate(bundle))
+        self.append(launch_button)
 
-        self.connect("clicked", lambda *_: on_activate(bundle))
+        menu_button = Gtk.MenuButton()
+        menu_button.add_css_class("flat")
+        menu_button.add_css_class("pie-menu-petal-menu")
+        menu_button.set_icon_name("view-more-symbolic")
+        menu_button.set_halign(Gtk.Align.CENTER)
+        self.append(menu_button)
 
-        right_click = Gtk.GestureClick()
-        right_click.set_button(3)
-        right_click.connect("pressed", lambda *_a: on_unpin(bundle))
-        self.add_controller(right_click)
+        popover = Gtk.Popover()
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        title = Gtk.Label(label=bundle.name)
+        title.add_css_class("heading")
+        box.append(title)
+        unpin_button = Gtk.Button(label="Unpin from favorites")
+        unpin_button.add_css_class("flat")
+        unpin_button.connect(
+            "clicked", lambda *_: (popover.popdown(), on_unpin(bundle))
+        )
+        box.append(unpin_button)
+        popover.set_child(box)
+        menu_button.set_popover(popover)
 
 
 class SugarPieMenu(Gtk.Fixed):
@@ -69,6 +95,15 @@ class SugarPieMenu(Gtk.Fixed):
         }
         .pie-menu-petal:hover {
             background: rgba(255,255,255,0.20);
+        }
+        .pie-menu-petal-menu {
+            min-width: 20px;
+            min-height: 20px;
+            padding: 0;
+            opacity: 0.55;
+        }
+        .pie-menu-petal-menu:hover {
+            opacity: 1;
         }
         .pie-menu-center {
             border-radius: 50%;
@@ -123,11 +158,24 @@ class SugarPieMenu(Gtk.Fixed):
         self._center_button.connect("clicked", self._on_center_clicked)
         self.put(self._center_button, 0, 0)
 
+        # Gtk.Fixed's do_size_allocate is not reliably invoked as an
+        # overridable Python vfunc (its child layout goes through
+        # GtkFixedLayout instead), so the widget never learns its real
+        # size that way — petals/center stayed pinned wherever _reflow()
+        # last ran, which could be before the window's true size was
+        # known. A tick callback runs every frame and naturally converges
+        # to the real allocation within a frame or two of mapping.
+        self._last_reflow_size = (0, 0)
+        self.add_tick_callback(self._on_tick)
+
         self._rebuild()
 
-    def do_size_allocate(self, width, height, baseline):
-        Gtk.Fixed.do_size_allocate(self, width, height, baseline)
-        self._reflow(width, height)
+    def _on_tick(self, _widget, _frame_clock):
+        size = (self.get_width(), self.get_height())
+        if size != self._last_reflow_size and size[0] > 0 and size[1] > 0:
+            self._last_reflow_size = size
+            self._reflow(*size)
+        return True
 
     # -- layout --------------------------------------------------------
 

@@ -547,5 +547,6 @@ class SettingsPanel(SettingsWindow):
     def is_visible(self):
         return self.get_visible()
 
-    def _on_close_request(self):
-        return False
+    def _on_close_request(self, _window):
+        self.set_visible(False)
+        return True
