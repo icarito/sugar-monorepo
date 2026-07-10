@@ -99,10 +99,5 @@ For Podman, pip install, and development instructions see the full
 - **Endless OS Foundation** — for demonstrating that a desktop-grid launcher,
   knowledge apps, and offline-first content can work beautifully for
   first-time computer users.
-- **Sebastian Silva (icarito)** — for the exploration, the agentic
-  prototyping, and the conviction that there is still room for a learning
-  shell in 2026.
-- **Pliaget** — the constructionist design agent that helped shape the HIG,
-  the Home View layouts, and the extension API.
 
 License: GPL-3.0-or-later, like the rest of Sugar.
