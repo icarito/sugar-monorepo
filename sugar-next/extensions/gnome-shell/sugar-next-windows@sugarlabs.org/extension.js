@@ -12,6 +12,12 @@ const INTERFACE_XML = `
       <arg type="s" direction="in" name="app_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
+    <method name="ListWindows">
+      <arg type="a(ss)" direction="out" name="windows"/>
+    </method>
+    <method name="GetFocused">
+      <arg type="s" direction="out" name="app_id"/>
+    </method>
     <signal name="WindowOpened">
       <arg type="s" name="app_id"/>
       <arg type="s" name="title"/>
@@ -131,6 +137,25 @@ export default class SugarNextWindowSourceExtension extends Extension {
             'WindowOpened',
             new GLib.Variant('(ss)', [wmClass, win.get_title() ?? '']),
         );
+    }
+
+    // D-Bus method: ListWindows() -> a(ss)
+    ListWindows() {
+        const windows = [];
+        for (const actor of global.get_window_actors()) {
+            const win = actor.get_meta_window();
+            const wmClass = win.get_wm_class();
+            if (wmClass) {
+                windows.push([wmClass, win.get_title() ?? '']);
+            }
+        }
+        return windows;
+    }
+
+    // D-Bus method: GetFocused() -> s
+    GetFocused() {
+        const win = this._display.focus_window;
+        return win ? (win.get_wm_class() ?? '') : '';
     }
 
     // D-Bus method: FocusWindow(app_id) -> bool

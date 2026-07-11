@@ -84,6 +84,38 @@ class GnomeWindowSource:
         self._available = True
         self._signal_id = self._proxy.connect("g-signal", self._on_g_signal)
 
+        # Enumerate windows already open before this adapter started.
+        # D-Bus signals are only delivered for changes after subscription,
+        # so existing windows would otherwise be invisible.
+        try:
+            result = self._proxy.call_sync(
+                "ListWindows",
+                None,
+                Gio.DBusCallFlags.NONE,
+                -1,
+                None,
+            )
+            for app_id, title in result.unpack()[0]:
+                if self._on_open is not None:
+                    self._on_open(app_id, title)
+        except GLib.Error:
+            log.exception("ListWindows() failed")
+
+        # Emit initial focus state.
+        if self._on_focus is not None:
+            try:
+                result = self._proxy.call_sync(
+                    "GetFocused",
+                    None,
+                    Gio.DBusCallFlags.NONE,
+                    -1,
+                    None,
+                )
+                app_id = result.unpack()[0]
+                self._on_focus(app_id or None)
+            except GLib.Error:
+                log.exception("GetFocused() failed")
+
     def stop(self):
         if self._proxy is not None and self._signal_id is not None:
             self._proxy.disconnect(self._signal_id)
